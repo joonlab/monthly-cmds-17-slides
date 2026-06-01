@@ -1,0 +1,942 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<title>월간 CMDS 17회차 · 박준 파트 — AI 리서치와 정보 수집 자동화</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700;900&family=Noto+Serif+KR:wght@400;500;600;700;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<!-- Speaker notes: one string per slide, in slide order. Optional but recommended.
+     The deck-stage component reads this and posts it to any notes renderer. -->
+<script type="application/json" id="speaker-notes">
+[
+  "오늘 한 문장: 공식 API가 없어도 원하는 정보를 AI가 알아서 가져오게 만든다. 90분간 그 방법과 실습 키트를 다룬다.",
+  "17회차는 세 파트. 내 파트가 첫 90분이고 정보 수집 사다리부터 캡스톤까지 다룬다. 이후 요한·태극 파트로 이어진다.",
+  "핵심 질문 한 장. 세 가지 원칙: 위에서부터 내려와라, 바퀴를 다시 만들지 마라, 외부 콘텐츠는 데이터로 취급.",
+  "오늘을 관통하는 프레임. 공식 API → 검색 API → 크롤링 SaaS → 브라우저, 그리고 MCP로 패키징. 안 되면 한 칸씩 내려간다.",
+  "실습 시작은 3스텝. zip 풀고, 폴더에서 claude 실행, /start 입력. 하네스는 이미 세팅돼 있다. 준비물은 Claude Code·Python·키 1개.",
+  "키트 구성. CLAUDE.md 거버넌스, 슬래시커맨드, guides 01~08, code, LLMWiki 캡스톤 볼트. 자주 쓰는 커맨드 소개.",
+  "필수 키 3종 모두 무료 티어. .env에 넣고 절대 커밋 금지. Claude에게 넣어달라고 해도 된다.",
+  "1순위 챕터. 스크래핑부터 떠올리지 말고 공식 API·공개데이터를 먼저 검색하라.",
+  "arXiv는 무키 수집. 법제처 korean-law는 verify_citations로 AI가 지어낸 조문을 실시간 검증. 무료 API를 MCP로 감싸면 환각까지 잡는다.",
+  "2순위 챕터. 공식 API가 없으면 검색 API로 우회.",
+  "검색 API 4종 비교. RAG는 Tavily, 시맨틱은 Exa, 저렴은 Brave, Google 원본은 SerpAPI.",
+  "3순위 챕터. 사이트 구조·안티봇이 귀찮으면 크롤링 SaaS에 위임.",
+  "Firecrawl은 URL을 깨끗한 마크다운으로. Apify는 플랫폼 전용 Actor 앱스토어. 둘 중 필요한 형태로 선택.",
+  "4순위 챕터. 완전 통제·로그인이 필요하면 브라우저 자동화. 단 윤리·ToS 먼저.",
+  "Playwright(표준+세션재사용), DevTools Recorder(코드 0줄 녹화), cmux(병렬). 이 자료도 cmux로 병렬 수집했다.",
+  "한 단계 위. Gemini로 리서치를 통째로 위임. 그냥 LLM → grounding → Deep Research 난이도 사다리.",
+  "Claude Agent SDK 개념. 손으로 시킬 일은 CLI, 시스템이 반복 호출할 일은 SDK로 앱에 임베드.",
+  "이번 회차의 심장. Claude Code를 자료조사 머신으로. 하네스 5층: A 하네스, B Skill, C MCP, D 프롬프트, E 검증.",
+  "환각 완화 4원칙: 1차 출처 우선, 교차검증, verify_citations, 외부 콘텐츠는 데이터.",
+  "캡스톤. 3계층(Inbox→Raw Sources→Wiki) + 7개 커맨드. /ingest·/query·/lint. RAG와 달리 복리로 누적된다.",
+  "캡스톤 실습 흐름. cd LLMWiki && claude → Core Context → /ingest → /query → Obsidian 그래프뷰.",
+  "가져갈 것 세 가지. 위에서부터, 반복은 환경으로, 엮으면 스스로 자라는 위키. 키트·슬라이드는 배포 링크로 제공(URL 추후 기입)."
+]
+</script>
+
+<style>
+  /* ============================================================
+     LG DESIGN SYSTEM — design tokens
+     LG Red #A50034 · Neutral Gray #6B6B6B · Premium Silver #8A8D8F · Gold #85714D
+     Fonts: Noto Serif KR (display) · Noto Sans KR (body) · JetBrains Mono (code)
+     ============================================================ */
+  :root {
+    --bg: #ffffff;         /* pure white */
+    --bg-deep: #f5f5f5;    /* subtle off-white panel */
+    --paper: #ffffff;
+    --ink: #1a1a1a;        /* near-black ink */
+    --ink-2: #2e2e2e;
+    --muted: #6B6B6B;      /* Neutral Gray */
+    --silver: #8A8D8F;     /* Premium Silver */
+    --rule: #e4e4e4;
+    --rule-soft: #f0f0f0;
+    --accent: #A50034;     /* LG Red */
+    --accent-2: #85714D;   /* Highlight Gold */
+    --ok: #2f6a46;
+    --pending: #b8b8b8;
+    --chalk-bg: #1a1a1a;
+    --chalk: #f5f5f5;
+  }
+  html, body { background: #d0d0d0; margin: 0; padding: 0; }
+  body {
+    font-family: 'Noto Sans KR', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .serif { font-family: 'Noto Serif KR', 'Noto Serif', Georgia, serif; }
+  .mono  { font-family: 'JetBrains Mono', ui-monospace, Menlo, monospace; }
+
+  /* ---------- Base slide ---------- */
+  .slide {
+    background: var(--bg);
+    color: var(--ink);
+    padding: 100px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    overflow: hidden;
+  }
+  .slide.paper { background: var(--paper); }
+  .slide.cream-deep { background: var(--bg-deep); }
+  .slide.dark { background: #141210; color: #f1ebdc; }
+  .slide.dark .muted { color: #a59c89; }
+
+  /* Global logo top-right on every slide (runtime-injected, see bottom script) */
+  .deck-logo {
+    position: absolute;
+    top: 0px;
+    right: 40px;
+    width: 207px;
+    height: auto;
+    z-index: 10;
+    opacity: 0.95;
+    pointer-events: none;
+  }
+  .slide.dark .deck-logo { filter: invert(1) brightness(1.1); opacity: 0.85; }
+  .slide.no-logo .deck-logo { display: none; }
+
+  /* Header chrome ---------- */
+  .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    font-size: 24px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    text-transform: uppercase;
+    font-weight: 500;
+    padding-right: 240px;  /* reserve space for logo */
+  }
+  .head .time { font-variant-numeric: tabular-nums; }
+  .head .section-tag { font-weight: 600; color: var(--ink); letter-spacing: 0.08em;}
+
+  /* Progress indicator (multi-part agenda / homework tracker) */
+  .progress {
+    display: flex;
+    gap: 40px;
+    font-size: 20px;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    font-weight: 500;
+  }
+  .progress .item { display: inline-flex; align-items: center; gap: 10px; }
+  .progress .num { font-family: 'Noto Serif KR', serif; font-weight: 700; color: var(--ink); }
+  .progress .st { font-size: 22px; width: 22px; display: inline-block; text-align: center; }
+  .progress .done { color: var(--ok); }
+  .progress .pend { color: var(--pending); }
+  .progress .cur .st { color: var(--accent-2); }
+  .progress .cur .num { color: var(--accent-2); }
+  .progress .cur .label { color: var(--ink); font-weight: 700; }
+
+  /* Titles */
+  .kicker {
+    font-size: 24px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 600;
+    margin-bottom: 24px;
+  }
+  h1.title { font-family: 'Noto Serif KR', serif; font-weight: 700; font-size: 96px; line-height: 1.08; letter-spacing: -0.01em; margin: 0; }
+  h2.title { font-family: 'Noto Serif KR', serif; font-weight: 700; font-size: 72px; line-height: 1.12; letter-spacing: -0.01em; margin: 0; }
+  h3.subtitle { font-weight: 400; font-size: 36px; line-height: 1.4; color: var(--ink-2); margin: 24px 0 0; letter-spacing: -0.005em; }
+  .lead { font-size: 34px; line-height: 1.55; color: var(--ink-2); }
+
+  /* Rules */
+  .hair { border: 0; border-top: 1px solid var(--rule); margin: 40px 0; }
+  .thick-rule { border: 0; border-top: 2px solid var(--ink); margin: 0 0 28px; width: 80px; }
+
+  /* Big number */
+  .big-num {
+    font-family: 'Noto Serif KR', serif;
+    font-weight: 900;
+    font-size: 180px;
+    line-height: 0.9;
+    letter-spacing: -0.04em;
+    color: var(--ink);
+  }
+  .big-num .unit { font-size: 56px; font-weight: 600; color: var(--muted); margin-left: 8px; letter-spacing: 0.02em; }
+
+  /* Cards */
+  .card { background: var(--paper); border: 1px solid var(--rule); padding: 40px; box-sizing: border-box; }
+  .card.dark { background: #1a1815; border-color: #2e2a24; color: #f1ebdc; }
+
+  /* Code/mono styling */
+  .mono-box { background: #141210; color: #e8e2ce; padding: 32px 36px; border-radius: 4px; font-family: 'JetBrains Mono', monospace; font-size: 24px; line-height: 1.6; }
+  .mono-box .c { color: #8a8270; }
+  .mono-box .k { color: #e0a96d; }
+
+  /* Watermark chapter number */
+  .watermark {
+    position: absolute;
+    font-family: 'Noto Serif KR', serif;
+    font-weight: 900;
+    font-size: 360px;
+    line-height: 0.8;
+    color: #A50034;
+    opacity: 0.06;
+    top: 110px;
+    right: 120px;
+    letter-spacing: -0.08em;
+    pointer-events: none;
+    user-select: none;
+    z-index: 0;
+  }
+
+  /* Utility */
+  .flex { display: flex; }
+  .row { display: flex; }
+  .col { display: flex; flex-direction: column; }
+  .grow { flex: 1; }
+  .gap-8 { gap: 8px; } .gap-16 { gap: 16px; } .gap-24 { gap: 24px; } .gap-32 { gap: 32px; } .gap-40 { gap: 40px; } .gap-56 { gap: 56px; } .gap-80 { gap: 80px; }
+  .center { justify-content: center; align-items: center; }
+  .between { justify-content: space-between; }
+  .w-half { flex: 1 1 50%; }
+  .pill { display: inline-block; padding: 8px 18px; border: 1px solid var(--ink); border-radius: 999px; font-size: 20px; letter-spacing: 0.06em; font-weight: 500; text-transform: uppercase;}
+  .accent { color: var(--accent); }
+  .accent2 { color: var(--accent-2); }
+  .muted { color: var(--muted); }
+  .ink { color: var(--ink); }
+
+  /* Tables */
+  table.grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 26px;
+    line-height: 1.45;
+  }
+  table.grid th, table.grid td {
+    text-align: left;
+    padding: 20px 22px;
+    border-bottom: 1px solid var(--rule);
+    vertical-align: top;
+  }
+  table.grid thead th {
+    font-size: 20px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    border-bottom: 2px solid var(--ink);
+    padding-bottom: 14px;
+  }
+  table.grid td.first { font-weight: 600; }
+
+  /* Slide-level classes */
+  .fill { flex: 1; }
+
+  /* Chalkboard look (dark callout box) */
+  .chalk {
+    background: var(--chalk-bg);
+    color: var(--chalk);
+    padding: 36px 48px;
+    border-radius: 4px;
+    font-family: 'Noto Serif KR', serif;
+    position: relative;
+    box-shadow: inset 0 0 80px rgba(0,0,0,0.3);
+  }
+  .chalk .chalk-num { font-size: 46px; font-weight: 900; color: #f6eac2; margin-right: 16px; }
+  .chalk .chalk-q { font-size: 40px; font-weight: 600; letter-spacing: -0.005em; line-height: 1.35; }
+  .chalk .chalk-sub { font-size: 24px; color: #b6ad90; margin-top: 8px; font-family: 'Noto Sans KR'; }
+  .chalk .state { margin-top: 12px; font-size: 22px; letter-spacing: 0.08em; font-family: 'JetBrains Mono', monospace; color: #9a9176;}
+
+  /* Footer */
+  .foot {
+    display: flex;
+    justify-content: space-between;
+    font-size: 24px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  /* Chapter markers */
+  .chap-label { font-size: 28px; letter-spacing: 0.32em; color: var(--accent); text-transform: uppercase; font-weight: 600;}
+
+  /* Speaker slash separator */
+  .dot-sep::before { content: '·'; margin: 0 14px; color: var(--muted); }
+
+  /* KPI grid */
+  .kpi {
+    background: var(--paper);
+    border-top: 3px solid var(--ink);
+    padding: 44px 40px 40px;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    min-height: 340px;
+  }
+  .kpi .role { font-size: 22px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); font-weight: 600;}
+  .kpi .num { font-family: 'Noto Serif KR', serif; font-size: 150px; line-height: 0.9; font-weight: 900; letter-spacing: -0.04em; color: var(--ink); }
+  .kpi .num .u { font-size: 44px; font-weight: 600; color: var(--muted); margin-left: 6px; }
+  .kpi .label { font-size: 24px; color: var(--ink-2); line-height: 1.4; margin-top: auto; }
+
+  /* Timeline bars (gantt) */
+  .timeline { display: flex; border: 2px solid var(--ink); height: 100px; font-size: 20px; }
+  .timeline .seg { display: flex; flex-direction: column; justify-content: center; padding: 10px 16px; border-right: 1px solid var(--ink); color: var(--ink); font-weight: 500; }
+  .timeline .seg:last-child { border-right: 0; }
+  .timeline .seg .t { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 600;}
+  .timeline .seg .n { font-size: 24px; font-weight: 600; margin-top: 4px;}
+  .timeline .seg .d { font-size: 18px; color: var(--muted); margin-top: 2px;}
+  .timeline .chap { background: rgba(165,0,52,0.08); }
+  .timeline .demo { background: rgba(133,113,77,0.15); }
+  .timeline .meta { background: #f0f0f0; }
+
+  /* Bullet styles */
+  ul.clean { list-style: none; padding: 0; margin: 0; }
+  ul.clean li { padding: 14px 0; border-bottom: 1px solid var(--rule-soft); font-size: 28px; line-height: 1.45; }
+  ul.clean li:last-child { border-bottom: 0; }
+  ul.clean li b { font-weight: 700; color: var(--ink); }
+  ul.clean.tight li { padding: 10px 0; font-size: 26px; }
+
+  /* Emphasis (underline highlight) — hl = red, hl2 = gold */
+  .hl { background: linear-gradient(transparent 62%, rgba(165,0,52,0.14) 62%, rgba(165,0,52,0.14) 94%, transparent 94%); padding: 0 2px; color: var(--accent); font-weight: 700; }
+  .hl2 { background: linear-gradient(transparent 62%, rgba(133,113,77,0.18) 62%, rgba(133,113,77,0.18) 94%, transparent 94%); padding: 0 2px; color: var(--accent-2); font-weight: 700; }
+
+  /* Tree / code listing */
+  .tree { font-family: 'JetBrains Mono', monospace; font-size: 22px; line-height: 1.7; color: var(--ink-2); }
+  .tree .node { padding: 2px 0; }
+  .tree .star { color: var(--accent-2); font-weight: 700; }
+  .tree .hdr { font-size: 22px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-top: 14px; margin-bottom: 10px; font-family: 'Noto Sans KR'; border-top: 1px solid var(--rule); padding-top: 14px;}
+  .tree .hdr:first-child { border-top: 0; padding-top: 0; margin-top: 0;}
+
+  /* Flow diagram */
+  .flow-node {
+    align-self: center;
+    background: var(--paper);
+    border: 2px solid var(--ink);
+    padding: 16px 36px;
+    font-size: 28px;
+    font-weight: 600;
+    min-width: 360px;
+    text-align: center;
+    border-radius: 2px;
+  }
+  .flow-node.accent-node { background: var(--ink); color: var(--paper); }
+  .flow-arrow { align-self: center; width: 2px; height: 28px; background: var(--ink); position: relative; }
+  .flow-arrow::after { content: ''; position: absolute; bottom: -2px; left: -6px; border: 7px solid transparent; border-top-color: var(--ink); }
+
+  /* Quote blocks */
+  .quote {
+    font-family: 'Noto Serif KR', serif;
+    font-size: 58px;
+    line-height: 1.35;
+    letter-spacing: -0.01em;
+    font-weight: 500;
+    color: var(--ink);
+  }
+  .quote.sm { font-size: 44px; }
+  .quote.xs { font-size: 36px; }
+  .quote .mark { color: var(--accent-2); font-family: 'Noto Serif KR', serif;}
+</style>
+</head>
+<body>
+
+<deck-stage width="1920" height="1080">
+
+  <!-- ============================================================
+       SLIDES GO HERE.
+       Each slide is a <section class="slide ...">. Copy archetype
+       markup from references/slide-archetypes.md and fill content.
+       Background variants: (default white) · paper · cream-deep · dark
+       Always give each <section> a data-label="NN Short Name".
+       ============================================================ -->
+
+  <!-- ===== 01 Title ===== -->
+  <section data-label="01 Title" class="slide paper">
+    <div class="head">
+      <div><span class="section-tag">월간 CMDS · 17회차</span></div>
+      <div>박준 파트 · 90분</div>
+    </div>
+    <div style="flex:1; display:flex; flex-direction:column; justify-content:center; max-width: 1560px;">
+      <div class="kicker">AI RESEARCH · 정보 수집 자동화</div>
+      <h1 class="title" style="font-size: 88px;">원하는 정보를 AI가<br>알아서 찾아오게 하려면?</h1>
+      <h3 class="subtitle" style="font-family:'Noto Serif KR'; font-size:48px; font-weight:400; color: var(--muted); margin-top: 32px;">
+        AI 리서치와 정보 수집 자동화
+      </h3>
+      <hr class="hair" style="margin: 56px 0 36px; width: 200px; border-color: var(--ink);">
+      <div style="display:flex; gap:80px; font-size: 26px; color: var(--ink-2); line-height: 1.6;">
+        <div>
+          <div class="mono" style="font-size: 24px; letter-spacing:0.08em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px;">Speaker</div>
+          <div style="font-weight: 700; font-size: 32px;">박준 <span style="color: var(--muted); font-weight:400;">/ JoonLab</span></div>
+        </div>
+        <div>
+          <div class="mono" style="font-size: 24px; letter-spacing:0.08em; color: var(--muted); text-transform: uppercase; margin-bottom: 6px;">When</div>
+          <div style="font-weight: 700; font-size: 32px;">2026-06-01 <span style="color:var(--muted); font-weight:400;">(월)</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="foot" style="margin-top: auto; align-items: flex-end;">
+      <div class="serif" style="font-size: 28px; font-style: italic; color: var(--ink-2); max-width: 1200px; line-height: 1.5;">
+        “공식 API가 없어도, 내가 원하는 정보를 AI가 알아서 가져오게 만든다.”
+      </div>
+      <div style="font-size: 24px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); font-weight: 600;">01 / 22</div>
+    </div>
+  </section>
+
+  <!-- ===== 02 Today's Plan (timeline) ===== -->
+  <section data-label="02 Today Plan" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Agenda</div><div class="time">17회차 전체</div></div>
+    <div style="margin-top: 32px;">
+      <div class="kicker">오늘 3시간의 그림</div>
+      <h2 class="title">17회차 — 세 파트로 흐른다</h2>
+      <h3 class="subtitle">박준 파트(90분)가 첫 블록. 이어서 요한·태극 파트로 확장된다.</h3>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; margin-top: 20px;">
+      <div class="timeline" style="height: 150px;">
+        <div class="seg demo" style="flex: 90"><div class="t">PART 1</div><div class="n">박준 · 자료 수집 자동화</div><div class="d">90분</div></div>
+        <div class="seg chap" style="flex: 45"><div class="t">PART 2</div><div class="n">요한 파트</div><div class="d">45분</div></div>
+        <div class="seg meta" style="flex: 45"><div class="t">PART 3</div><div class="n">태극 파트</div><div class="d">45분</div></div>
+      </div>
+      <div style="display:flex; gap:48px; margin-top: 44px; font-size: 24px; color: var(--ink-2);">
+        <div class="row gap-16 center"><span style="display:inline-block; width: 22px; height: 22px; background: rgba(133,113,77,0.3); border: 1px solid var(--ink);"></span>박준 — 정보 수집 4단 사다리 + 캡스톤</div>
+        <div class="row gap-16 center"><span style="display:inline-block; width: 22px; height: 22px; background: rgba(165,0,52,0.12); border: 1px solid var(--ink);"></span>요한·태극 — 후속 파트</div>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>02 / 22</div></div>
+  </section>
+
+  <!-- ===== 03 Core Message ===== -->
+  <section data-label="03 Core Message" class="slide paper" style="padding: 130px 150px;">
+    <div class="head"><div class="section-tag">Thesis</div><div class="time">박준 파트 · 핵심 질문</div></div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center;">
+      <div class="kicker" style="margin-bottom: 36px;">CORE MESSAGE</div>
+      <h2 class="title" style="font-size: 78px; line-height: 1.28;">
+        공식 <span class="hl2">API가 없어도</span>,<br>
+        원하는 정보를 <span class="hl">AI가 가져오게</span> 만든다.
+      </h2>
+      <h3 class="subtitle" style="font-family: 'Noto Serif KR'; font-size: 40px; margin-top: 44px; color: var(--muted);">그리고 그걸 LLM이 대화 중 스스로 호출하게 MCP로 패키징한다.</h3>
+      <hr class="hair" style="margin: 64px 0 44px; width: 140px; border-color: var(--ink);">
+      <div class="serif" style="font-size: 36px; line-height: 1.6; color: var(--ink-2); display: flex; flex-direction: column; gap: 14px;">
+        <div>① 위에서부터 내려와라 — 크롤링부터 짜지 말고 "공식 API가 있나?"를 먼저 물어라.</div>
+        <div>② 바퀴를 다시 만들지 마라 — 이미 패키징된 MCP·Skill을 찾아 붙여라.</div>
+        <div>③ 외부 콘텐츠 = 잠재적 공격면 — 수집한 데이터는 "명령"이 아니라 "데이터".</div>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>03 / 22</div></div>
+  </section>
+
+  <!-- ===== 04 4-Step Ladder (flow) ===== -->
+  <section data-label="04 Ladder" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Framework</div><div class="time">관통 프레임</div></div>
+    <div style="margin-top: 24px;">
+      <div class="kicker">정보 수집 4단 사다리</div>
+      <h2 class="title" style="font-size: 66px;">위에서부터 내려간다</h2>
+      <h3 class="subtitle">안 되면 한 칸씩 — 마지막에 MCP로 패키징.</h3>
+    </div>
+    <div style="flex: 1; display: flex; gap: 70px; margin-top: 36px; align-items: center;">
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: stretch;">
+        <div class="flow-node">① 공식 API 있나?</div>
+        <div class="flow-arrow"></div>
+        <div class="flow-node">② 검색 API로 우회</div>
+        <div class="flow-arrow"></div>
+        <div class="flow-node" style="border-color: var(--accent-2);">③ 크롤링 SaaS에 위임</div>
+        <div class="flow-arrow"></div>
+        <div class="flow-node accent-node">④ 브라우저 자동화 직접</div>
+      </div>
+      <div style="flex: 1.05;">
+        <div class="mono" style="font-size: 20px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent-2); margin-bottom: 16px;">각 칸이 무엇인가</div>
+        <div class="tree" style="font-size: 25px; line-height: 1.95;">
+<pre style="margin:0; font-family: inherit;">① arXiv · 법제처 · 공개데이터  <span style="color:var(--muted);">— 안정·합법·JSON</span>
+② Tavily · Exa · Brave · SerpAPI  <span style="color:var(--muted);">— 웹→LLM친화</span>
+③ Firecrawl · Apify  <span style="color:var(--muted);">— 안티봇·렌더링 위임</span>
+④ Playwright · cmux · Recorder  <span style="color:var(--muted);">— 사람 화면 그대로</span>
+<span class="star">⭐ MCP</span> 로 패키징 → <span style="color:var(--muted);">LLM이 대화 중 스스로 호출</span></pre>
+        </div>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>04 / 22</div></div>
+  </section>
+
+  <!-- ===== 05 Start in 3 steps (dark teaser) ===== -->
+  <section data-label="05 Start 3 Steps" class="slide dark" style="padding: 100px 120px;">
+    <div class="head">
+      <div class="section-tag" style="color: var(--accent-2);">실습 시작 · HANDS-ON</div>
+      <div class="time" style="color: #a59c89;">이 파일 받아 이렇게 진행</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 40px;">
+      <div>
+        <div class="kicker" style="color: var(--accent-2); margin-bottom: 18px;">3 STEPS TO START</div>
+        <h1 class="title serif" style="color: #fdf7e8; font-size: 84px; line-height: 1.12;">압축만 풀면<br>하네스는 이미 세팅됨</h1>
+      </div>
+      <hr style="border: 0; border-top: 1px solid #3a3530; margin: 0; width: 160px;">
+      <div style="display: flex; flex-direction: column; gap: 24px; font-size: 38px; line-height: 1.4; color: #e8e2ce; font-family: 'Noto Serif KR'; font-weight: 500;">
+        <div><span class="mono" style="font-size: 26px; color: var(--accent-2); margin-right: 22px;">01</span>이 zip 압축을 푼다</div>
+        <div><span class="mono" style="font-size: 26px; color: var(--accent-2); margin-right: 22px;">02</span>이 폴더(cmds17-research-lab)에서 <span class="mono" style="color:#fdf7e8;">claude</span> 실행</div>
+        <div><span class="mono" style="font-size: 26px; color: var(--accent-2); margin-right: 22px;">03</span>Claude에게 <span class="mono" style="color:#fdf7e8;">/start</span> 입력</div>
+      </div>
+    </div>
+    <div class="foot" style="color: #6f6659;">
+      <div class="mono" style="font-size: 20px; letter-spacing: 0.2em;">준비물 · Claude Code / Python 3.10+ / API 키 1개</div>
+      <div>05 / 22</div>
+    </div>
+  </section>
+
+  <!-- ===== 06 Kit Composition (tree) ===== -->
+  <section data-label="06 Kit" class="slide paper">
+    <div class="head"><div class="section-tag">Toolkit</div><div class="time">실습 키트 구성</div></div>
+    <div style="margin-top: 24px;">
+      <div class="kicker">하네스가 이미 구축됨</div>
+      <h2 class="title" style="font-size: 64px;">cmds17-research-lab</h2>
+      <h3 class="subtitle">여러분은 따라가기만 — /start가 다음 할 일을 안내한다.</h3>
+    </div>
+    <div style="flex: 1; display: flex; gap: 80px; margin-top: 36px; align-items: center;">
+      <div style="flex: 1.1;">
+        <div class="tree" style="font-size: 25px; line-height: 1.95;">
+<pre style="margin:0; font-family: inherit;">cmds17-research-lab/
+├── CLAUDE.md          <span style="color:var(--muted);">— 자료조사 거버넌스</span>
+├── .claude/commands/  <span style="color:var(--muted);">— /start /step /research-ladder</span>
+├── guides/01~08       <span style="color:var(--muted);">— 단계별 실습 본문</span>
+├── code/              <span style="color:var(--muted);">— arxiv·firecrawl·playwright</span>
+├── api_keys/          <span style="color:var(--muted);">— 키 발급 가이드</span>
+└── LLMWiki/           <span class="star">— ★ 캡스톤 볼트</span></pre>
+        </div>
+      </div>
+      <div style="flex: 1;">
+        <div class="mono" style="font-size: 20px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px;">자주 쓰는 커맨드</div>
+        <ul class="clean tight">
+          <li><b>/start</b> — 어디까지 했는지 + 다음 할 일</li>
+          <li><b>/setup-check</b> — Python·패키지·키 점검</li>
+          <li><b>/step [번호]</b> — guides 01~08 함께 진행</li>
+          <li><b>/research-ladder [주제]</b> — 4단 사다리 조사</li>
+          <li><b>/wiki-build [주제]</b> — 캡스톤 파이프라인</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>06 / 22</div></div>
+  </section>
+
+  <!-- ===== 07 API Keys ===== -->
+  <section data-label="07 API Keys" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Setup</div><div class="time">.env 준비</div></div>
+    <div style="margin-top: 24px;">
+      <div class="kicker">필수 키 — 전부 무료 티어</div>
+      <h2 class="title" style="font-size: 64px;">3종 키만 .env에</h2>
+      <h3 class="subtitle">키는 .gitignore 대상 — 절대 커밋·출력 금지.</h3>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; margin-top: 44px;">
+      <div style="display: flex; flex-direction: column; border-top: 3px solid var(--ink); padding-top: 22px;">
+        <div class="serif" style="font-weight: 900; font-size: 56px; line-height: 1;">Gemini</div>
+        <div class="mono" style="font-size: 18px; color: var(--accent); letter-spacing: 0.08em; margin-top: 16px;">GEMINI_API_KEY</div>
+        <div style="font-size: 24px; color: var(--ink-2); margin-top: 12px; line-height: 1.45;">grounding · Deep Research · 5천 prompts/월</div>
+      </div>
+      <div style="display: flex; flex-direction: column; border-top: 3px solid var(--ink); padding-top: 22px;">
+        <div class="serif" style="font-weight: 900; font-size: 56px; line-height: 1;">Tavily</div>
+        <div class="mono" style="font-size: 18px; color: var(--accent); letter-spacing: 0.08em; margin-top: 16px;">TAVILY_API_KEY</div>
+        <div style="font-size: 24px; color: var(--ink-2); margin-top: 12px; line-height: 1.45;">RAG 특화 검색 API · 가입 크레딧</div>
+      </div>
+      <div style="display: flex; flex-direction: column; border-top: 3px solid var(--ink); padding-top: 22px;">
+        <div class="serif" style="font-weight: 900; font-size: 56px; line-height: 1;">Firecrawl</div>
+        <div class="mono" style="font-size: 18px; color: var(--accent); letter-spacing: 0.08em; margin-top: 16px;">FIRECRAWL_API_KEY</div>
+        <div style="font-size: 24px; color: var(--ink-2); margin-top: 12px; line-height: 1.45;">URL→마크다운 · 1,000 credits/월</div>
+      </div>
+    </div>
+    <div class="foot"><div class="mono" style="font-size:20px;">cp .env.example .env  ·  또는 Claude에게 "내 키 .env에 넣어줘"</div><div>07 / 22</div></div>
+  </section>
+
+  <!-- ===== 08 Divider Ch.1 ===== -->
+  <section data-label="08 Ch.1 Cover" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Chapter 1</div><div class="time">1순위</div></div>
+    <div class="watermark">01</div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 2; max-width: 1400px;">
+      <div class="chap-label">LADDER · STEP ONE</div>
+      <h1 class="title serif" style="font-size: 128px; margin-top: 24px;">공식 API 먼저</h1>
+      <h3 class="subtitle" style="font-size: 40px; margin-top: 28px; max-width: 1200px;">스크래핑부터 떠올리는 건 초보. 고수는 공식 API·공개데이터를 먼저 검색한다.</h3>
+      <div style="margin-top: 72px; padding: 26px 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); max-width: 900px; font-size: 28px; line-height: 1.6;">
+        <b>안정 · 합법 · 구조화 JSON.</b>
+        <span class="muted">&nbsp;&nbsp;·&nbsp;&nbsp;</span>
+        <span class="mono" style="font-size: 24px;">arXiv · 법제처</span>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>08 / 22</div></div>
+  </section>
+
+  <!-- ===== 09 Official API demo ===== -->
+  <section data-label="09 Official API" class="slide paper">
+    <div class="head"><div class="section-tag">Demo · Official API</div><div class="time">arXiv · 법제처</div></div>
+    <div style="margin-top: 20px;">
+      <div class="kicker">무키 수집 + 환각검증</div>
+      <h2 class="title" style="font-size: 58px;">공식 API 두 얼굴</h2>
+      <h3 class="subtitle">하나는 무인증 수집, 하나는 AI 인용 검증.</h3>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 36px;">
+      <div class="card" style="display:flex; flex-direction:column;">
+        <div class="mono" style="font-size: 18px; color: var(--accent); letter-spacing: 0.1em;">ARXIV · 키 불필요</div>
+        <div style="font-size: 30px; font-weight: 700; margin-top: 12px;">논문 수집 파이프라인</div>
+        <div class="mono-box" style="font-size:19px; margin-top:18px;">curl "export.arxiv.org/api/<br>query?search_query=all:agent<br>&max_results=5"</div>
+        <div style="font-size: 22px; color: var(--ink-2); margin-top: auto; padding-top:16px; line-height:1.45;">Atom XML → feedparser. 연속 호출 시 3초 딜레이(매너).</div>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column; border-color: var(--accent);">
+        <div class="mono" style="font-size: 18px; color: var(--accent); letter-spacing: 0.1em;">법제처 · korean-law MCP</div>
+        <div style="font-size: 30px; font-weight: 700; margin-top: 12px;">verify_citations <span class="accent">★</span></div>
+        <div class="mono-box" style="font-size:19px; margin-top:18px;">klaw.sh verify_citations \<br>--text "민법 제839조의2에<br>따른 재산분할 청구"</div>
+        <div style="font-size: 22px; color: var(--ink-2); margin-top: auto; padding-top:16px; line-height:1.45;">AI가 지어낸 조문을 DB와 실시간 대조 → <b class="accent">✓실존 / ⚠확인 / ✗환각</b>.</div>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>09 / 22</div></div>
+  </section>
+
+  <!-- ===== 10 Divider Ch.2 ===== -->
+  <section data-label="10 Ch.2 Cover" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Chapter 2</div><div class="time">2순위</div></div>
+    <div class="watermark">02</div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 2; max-width: 1400px;">
+      <div class="chap-label">LADDER · STEP TWO</div>
+      <h1 class="title serif" style="font-size: 128px; margin-top: 24px;">검색 API로 우회</h1>
+      <h3 class="subtitle" style="font-size: 40px; margin-top: 28px; max-width: 1200px;">공식 API가 없으면 — 일반 웹 정보를 LLM이 먹기 좋은 형태로.</h3>
+      <div style="margin-top: 72px; padding: 26px 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); max-width: 900px; font-size: 28px; line-height: 1.6;">
+        <b>4종 비교 후 상황별 선택.</b>
+        <span class="muted">&nbsp;&nbsp;·&nbsp;&nbsp;</span>
+        <span class="mono" style="font-size: 24px;">Tavily · Exa · Brave · SerpAPI</span>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>10 / 22</div></div>
+  </section>
+
+  <!-- ===== 11 Search API comparison ===== -->
+  <section data-label="11 Search Compare" class="slide">
+    <div class="head"><div class="section-tag">Comparison</div><div class="time">검색 API 4종</div></div>
+    <div style="margin-top: 24px;">
+      <div class="kicker">상황별로 다르게 고른다</div>
+      <h2 class="title" style="font-size: 60px;">검색 API 비교</h2>
+    </div>
+    <div style="flex: 1; display: flex; align-items: center; margin-top: 36px;">
+      <table class="grid" style="font-size: 25px;">
+        <thead>
+          <tr>
+            <th style="width: 16%;">구분</th>
+            <th style="width: 21%;">Tavily</th>
+            <th style="width: 21%;">Exa</th>
+            <th style="width: 21%;">Brave</th>
+            <th style="width: 21%;">SerpAPI</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="first">성격</td><td>AI/RAG 검색+요약</td><td>임베딩 시맨틱</td><td>자체 웹 인덱스</td><td>Google SERP 미러</td></tr>
+          <tr><td class="first">무료</td><td>가입 크레딧</td><td><b>1,000 req/월</b></td><td><b>월 $5(≈1k)</b></td><td>250/월</td></tr>
+          <tr><td class="first">언제</td><td>RAG/요약 즉시</td><td>시맨틱·연구발견</td><td>저비용·Claude친화</td><td>Google 원본</td></tr>
+          <tr><td class="first">MCP</td><td>✅</td><td>✅ (Smithery)</td><td>✅</td><td>비공식</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="foot"><div></div><div>11 / 22</div></div>
+  </section>
+
+  <!-- ===== 12 Divider Ch.3 ===== -->
+  <section data-label="12 Ch.3 Cover" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Chapter 3</div><div class="time">3순위</div></div>
+    <div class="watermark">03</div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 2; max-width: 1400px;">
+      <div class="chap-label">LADDER · STEP THREE</div>
+      <h1 class="title serif" style="font-size: 128px; margin-top: 24px;">크롤링 SaaS</h1>
+      <h3 class="subtitle" style="font-size: 40px; margin-top: 28px; max-width: 1200px;">사이트 구조·안티봇·JS렌더링을 신경 쓰기 싫을 때 — "URL만 던지면 끝."</h3>
+      <div style="margin-top: 72px; padding: 26px 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); max-width: 900px; font-size: 28px; line-height: 1.6;">
+        <b>렌더링·안티봇을 위임.</b>
+        <span class="muted">&nbsp;&nbsp;·&nbsp;&nbsp;</span>
+        <span class="mono" style="font-size: 24px;">Firecrawl · Apify</span>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>12 / 22</div></div>
+  </section>
+
+  <!-- ===== 13 Firecrawl / Apify ===== -->
+  <section data-label="13 Crawl SaaS" class="slide paper">
+    <div class="head"><div class="section-tag">Crawling SaaS</div><div class="time">위임 두 갈래</div></div>
+    <div style="margin-top: 20px;">
+      <div class="kicker">URL → 본문 / 플랫폼 전용</div>
+      <h2 class="title" style="font-size: 58px;">Firecrawl vs Apify</h2>
+      <h3 class="subtitle">깨끗한 마크다운이 필요한가, 정형 플랫폼 데이터가 필요한가.</h3>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr; gap: 36px; margin-top: 36px;">
+      <div class="card" style="display:flex; flex-direction:column;">
+        <div class="mono" style="font-size: 18px; color: var(--accent); letter-spacing: 0.1em;">FIRECRAWL</div>
+        <div style="font-size: 30px; font-weight: 700; margin-top: 12px;">URL → LLM-ready 마크다운</div>
+        <ul class="clean tight" style="margin-top:14px;">
+          <li>Scrape · Crawl · Map · Search</li>
+          <li><b>무료 1,000 credits/월</b>, 카드 불필요</li>
+          <li class="mono" style="font-size:21px;">fc.scrape(url, formats=["markdown"])</li>
+        </ul>
+      </div>
+      <div class="card" style="display:flex; flex-direction:column;">
+        <div class="mono" style="font-size: 18px; color: var(--accent); letter-spacing: 0.1em;">APIFY</div>
+        <div style="font-size: 30px; font-weight: 700; margin-top: 12px;">Actor — 스크래퍼 앱스토어</div>
+        <ul class="clean tight" style="margin-top:14px;">
+          <li>34K+ Actor(인스타·링크드인·맵·X)</li>
+          <li><b>$0 플랜 + 매월 $5 크레딧</b></li>
+          <li class="mono" style="font-size:21px;">website-content-crawler → RAG</li>
+        </ul>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>13 / 22</div></div>
+  </section>
+
+  <!-- ===== 14 Divider Ch.4 ===== -->
+  <section data-label="14 Ch.4 Cover" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Chapter 4</div><div class="time">4순위</div></div>
+    <div class="watermark">04</div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; position: relative; z-index: 2; max-width: 1400px;">
+      <div class="chap-label">LADDER · STEP FOUR</div>
+      <h1 class="title serif" style="font-size: 120px; margin-top: 24px;">브라우저 자동화</h1>
+      <h3 class="subtitle" style="font-size: 40px; margin-top: 28px; max-width: 1200px;">로그인·전용제어·완전통제 — 사람 화면 그대로 직접 몬다.</h3>
+      <div style="margin-top: 72px; padding: 26px 0; border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule); max-width: 900px; font-size: 28px; line-height: 1.6;">
+        <b>최후의 수단 — 윤리·ToS 먼저.</b>
+        <span class="muted">&nbsp;&nbsp;·&nbsp;&nbsp;</span>
+        <span class="mono" style="font-size: 24px;">Playwright · cmux · Recorder</span>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>14 / 22</div></div>
+  </section>
+
+  <!-- ===== 15 Browser automation tools ===== -->
+  <section data-label="15 Browser Auto" class="slide paper">
+    <div class="head"><div class="section-tag">Browser Automation</div><div class="time">세 갈래</div></div>
+    <div style="margin-top: 20px;">
+      <div class="kicker">코드 / 녹화 / 병렬</div>
+      <h2 class="title" style="font-size: 58px;">직접 모는 3가지 길</h2>
+    </div>
+    <div style="flex: 1; display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 32px; margin-top: 32px;">
+      <div style="display: flex; flex-direction: column; border-top: 3px solid var(--ink); padding-top: 22px;">
+        <div class="serif" style="font-weight: 900; font-size: 80px; line-height: 0.9;">01</div>
+        <div class="mono" style="font-size: 17px; color: var(--accent); letter-spacing: 0.1em; margin-top: 18px;">PLAYWRIGHT</div>
+        <div style="font-size: 28px; font-weight: 700; line-height: 1.2; margin-top: 8px;">범용 표준</div>
+        <div style="font-size: 22px; color: var(--ink-2); margin-top: 12px; line-height: 1.45;">storage_state로 로그인 1회 → 재사용. state.json은 .gitignore 필수.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; border-top: 3px solid var(--ink); padding-top: 22px;">
+        <div class="serif" style="font-weight: 900; font-size: 80px; line-height: 0.9;">02</div>
+        <div class="mono" style="font-size: 17px; color: var(--accent); letter-spacing: 0.1em; margin-top: 18px;">DEVTOOLS RECORDER</div>
+        <div style="font-size: 28px; font-weight: 700; line-height: 1.2; margin-top: 8px;">코드 0줄 녹화</div>
+        <div style="font-size: 22px; color: var(--ink-2); margin-top: 12px; line-height: 1.45;">플로우 녹화 → export → Claude에 붙여 변환. 비개발자 초안.</div>
+      </div>
+      <div style="display: flex; flex-direction: column; border-top: 3px solid var(--ink); padding-top: 22px;">
+        <div class="serif" style="font-weight: 900; font-size: 80px; line-height: 0.9;">03</div>
+        <div class="mono" style="font-size: 17px; color: var(--accent); letter-spacing: 0.1em; margin-top: 18px;">CMUX BROWSER</div>
+        <div style="font-size: 28px; font-weight: 700; line-height: 1.2; margin-top: 8px;">병렬 · 박준 표준</div>
+        <div style="font-size: 22px; color: var(--ink-2); margin-top: 12px; line-height: 1.45;">서브에이전트마다 독립 surface. 이 강의 자료도 병렬 수집.</div>
+      </div>
+    </div>
+    <div class="foot"><div class="serif" style="font-style:italic; font-size:22px;">robots.txt · ToS · 본인 권한만 · 시연은 demo.playwright.dev</div><div>15 / 22</div></div>
+  </section>
+
+  <!-- ===== 16 Delegate to AI (Gemini) ===== -->
+  <section data-label="16 Delegate AI" class="slide cream-deep">
+    <div class="head"><div class="section-tag">Beyond · Gemini</div><div class="time">통째로 위임</div></div>
+    <div style="margin-top: 24px;">
+      <div class="kicker">난이도 사다리</div>
+      <h2 class="title" style="font-size: 60px;">AI에게 리서치를 통째로</h2>
+      <h3 class="subtitle">1~4단은 내가 도구를 고른다. Gemini는 검색·읽기·종합을 AI가 알아서.</h3>
+    </div>
+    <div style="flex: 1; display: flex; gap: 40px; margin-top: 40px; align-items: stretch;">
+      <div class="card" style="flex:1; display:flex; flex-direction:column;">
+        <div class="serif" style="font-size:64px; font-weight:900; line-height:0.9;">①</div>
+        <div style="font-size:28px; font-weight:700; margin-top:16px;">그냥 LLM</div>
+        <div style="font-size:22px; color:var(--ink-2); margin-top:10px; line-height:1.45;">컷오프 한계 · 출처 없음</div>
+      </div>
+      <div class="card" style="flex:1; display:flex; flex-direction:column; border-color: var(--accent-2);">
+        <div class="serif" style="font-size:64px; font-weight:900; line-height:0.9; color:var(--accent-2);">②</div>
+        <div style="font-size:28px; font-weight:700; margin-top:16px;">Search Grounding</div>
+        <div style="font-size:22px; color:var(--ink-2); margin-top:10px; line-height:1.45;">툴 한 줄 → 실시간+출처. groundingMetadata로 인라인 각주.</div>
+      </div>
+      <div class="card" style="flex:1; display:flex; flex-direction:column; border-color: var(--accent);">
+        <div class="serif" style="font-size:64px; font-weight:900; line-height:0.9; color:var(--accent);">③</div>
+        <div style="font-size:28px; font-weight:700; margin-top:16px;">Deep Research</div>
+        <div style="font-size:22px; color:var(--ink-2); margin-top:10px; line-height:1.45;">Interactions API · background → 자율 보고서.</div>
+      </div>
+    </div>
+    <div class="foot"><div class="serif" style="font-style:italic; font-size:22px;">Grounding = 즉답 / Deep Research = 백그라운드 잡</div><div>16 / 22</div></div>
+  </section>
+
+  <!-- ===== 17 Claude Agent SDK ===== -->
+  <section data-label="17 Agent SDK" class="slide paper">
+    <div class="head"><div class="section-tag">Concept</div><div class="time">코드로 임베드</div></div>
+    <div style="margin-top: 24px;">
+      <div class="kicker">CLI vs 앱 내장</div>
+      <h2 class="title" style="font-size: 60px;">Claude Agent SDK</h2>
+      <h3 class="subtitle">손으로 한 번 시킬 일 = CLI / 시스템이 반복 호출할 일 = Agent SDK.</h3>
+    </div>
+    <div style="flex: 1; display: flex; align-items: center; margin-top: 36px;">
+      <table class="grid" style="font-size: 27px;">
+        <thead>
+          <tr>
+            <th style="width: 20%;">구분</th>
+            <th style="width: 40%; color: var(--muted);">Claude Code (CLI)</th>
+            <th style="width: 40%; color: var(--ink);">Claude Agent SDK (앱 내장)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td class="first">사용</td><td style="color:var(--muted);">사람이 터미널에서 대화</td><td style="font-weight:600;">코드(query/Client)로 호출</td></tr>
+          <tr><td class="first">트리거</td><td style="color:var(--muted);">사람이 타이핑</td><td style="font-weight:600;">HTTP·크론·파이프라인</td></tr>
+          <tr><td class="first">적합</td><td style="color:var(--muted);">1회성 탐색·디버깅</td><td style="font-weight:600;">반복·서비스화·앱 기능</td></tr>
+          <tr><td class="first">예</td><td style="color:var(--muted);">"이 레포 버그 찾아줘"</td><td style="font-weight:600;">"질문하면 리서치해 답하는 웹서비스"</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="foot"><div></div><div>17 / 22</div></div>
+  </section>
+
+  <!-- ===== 18 Claude Code as research machine (harness 5 layers) ===== -->
+  <section data-label="18 Harness" class="slide cream-deep">
+    <div class="head"><div class="section-tag">★ Core</div><div class="time">이번 회차의 심장</div></div>
+    <div style="margin-top: 20px;">
+      <div class="kicker">반복 가능한 기계를 조립</div>
+      <h2 class="title" style="font-size: 58px;">Claude Code = 자료조사 머신</h2>
+      <h3 class="subtitle">환경을 만들면 짧은 프롬프트로도 매번 같은 품질이 나온다.</h3>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; margin-top: 30px;">
+      <div class="card" style="padding: 18px 30px; display:flex; align-items:center; gap:28px;">
+        <div class="serif" style="font-size:44px; font-weight:900; width:70px; flex-shrink:0;">A</div>
+        <div style="flex:1;"><b style="font-size:26px;">하네스</b> <span style="color:var(--muted);">— CLAUDE.md(항상 켜진 규칙)·서브에이전트·command·hooks·settings 권한</span></div>
+      </div>
+      <div class="card" style="padding: 18px 30px; display:flex; align-items:center; gap:28px;">
+        <div class="serif" style="font-size:44px; font-weight:900; width:70px; flex-shrink:0;">B</div>
+        <div style="flex:1;"><b style="font-size:26px;">Skill</b> <span style="color:var(--muted);">— 절차를 파일로. description이 Claude의 호출 판단 근거</span></div>
+      </div>
+      <div class="card" style="padding: 18px 30px; display:flex; align-items:center; gap:28px;">
+        <div class="serif" style="font-size:44px; font-weight:900; width:70px; flex-shrink:0;">C</div>
+        <div style="flex:1;"><b style="font-size:26px;">MCP</b> <span style="color:var(--muted);">— 공식 API를 도구로. 만들기 전 Smithery에 이미 있는지 검색</span></div>
+      </div>
+      <div class="card" style="padding: 18px 30px; display:flex; align-items:center; gap:28px; border-color: var(--accent);">
+        <div class="serif" style="font-size:44px; font-weight:900; width:70px; flex-shrink:0;">D·E</div>
+        <div style="flex:1;"><b style="font-size:26px;">프롬프트 · 검증</b> <span style="color:var(--muted);">— 5요소 프롬프트 + 1차출처·교차검증 루프</span></div>
+      </div>
+    </div>
+    <div class="foot"><div class="serif" style="font-style:italic; font-size:21px;">이 강의 자료 자체가 (A)서브에이전트 병렬 + (E)cmux 검증의 실례</div><div>18 / 22</div></div>
+  </section>
+
+  <!-- ===== 19 Hallucination mitigation ===== -->
+  <section data-label="19 Verification" class="slide paper">
+    <div class="head"><div class="section-tag">Principles</div><div class="time">신뢰의 핵심</div></div>
+    <div style="margin-top: 20px;">
+      <div class="kicker">자료조사 AI의 최대 리스크</div>
+      <h2 class="title" style="font-size: 60px;">환각 완화 · 검증</h2>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; margin-top: 30px;">
+      <div class="card" style="padding: 20px 32px; display:flex; align-items:center; gap:30px;">
+        <div class="serif" style="font-size:52px; font-weight:900; width:80px; flex-shrink:0;">01</div>
+        <div style="flex:1; font-size:25px; line-height:1.4;"><b>1차 출처 우선</b> — 원문(arXiv·법제처·IR) &gt; 2차 요약. 내부지식은 "미검증" 표기.</div>
+      </div>
+      <div class="card" style="padding: 20px 32px; display:flex; align-items:center; gap:30px;">
+        <div class="serif" style="font-size:52px; font-weight:900; width:80px; flex-shrink:0;">02</div>
+        <div style="flex:1; font-size:25px; line-height:1.4;"><b>교차검증</b> — 핵심 수치는 도구·출처 2~3개로 독립 확인. 갈리면 양쪽 병기.</div>
+      </div>
+      <div class="card" style="padding: 20px 32px; display:flex; align-items:center; gap:30px; border-color:var(--accent);">
+        <div class="serif" style="font-size:52px; font-weight:900; width:80px; flex-shrink:0;">03</div>
+        <div style="flex:1; font-size:25px; line-height:1.4;"><b class="accent">verify_citations</b> — AI가 쓴 인용을 1차 API로 실존 확인(✓/⚠/✗).</div>
+      </div>
+      <div class="card" style="padding: 20px 32px; display:flex; align-items:center; gap:30px;">
+        <div class="serif" style="font-size:52px; font-weight:900; width:80px; flex-shrink:0;">04</div>
+        <div style="flex:1; font-size:25px; line-height:1.4;"><b>외부 콘텐츠 = 데이터</b> — 본문 속 "지시 무시" 실행 금지(OWASP LLM01).</div>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>19 / 22</div></div>
+  </section>
+
+  <!-- ===== 20 Capstone LLM Wiki (flow + tree) ===== -->
+  <section data-label="20 Capstone" class="slide cream-deep">
+    <div class="head"><div class="section-tag">★ Capstone</div><div class="time">나만의 LLM Wiki</div></div>
+    <div style="margin-top: 20px;">
+      <div class="kicker">복리로 자라는 검증된 백과</div>
+      <h2 class="title" style="font-size: 58px;">나만의 LLM Wiki</h2>
+      <h3 class="subtitle">RAG = 매번 재검색. LLM Wiki = 한 번 읽어 컴파일하고 계속 갱신.</h3>
+    </div>
+    <div style="flex: 1; display: flex; gap: 70px; margin-top: 32px; align-items: center;">
+      <div style="flex: 1; display: flex; flex-direction: column; align-items: stretch;">
+        <div class="flow-node">00. Inbox</div>
+        <div class="flow-arrow"></div>
+        <div class="flow-node" style="border-color: var(--accent-2);">10. Raw Sources (원문보존)</div>
+        <div class="flow-arrow"></div>
+        <div class="flow-node accent-node">20. Wiki (합성 지식)</div>
+      </div>
+      <div style="flex: 1;">
+        <div class="mono" style="font-size: 20px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--accent); margin-bottom: 14px;">7개 슬래시커맨드</div>
+        <div class="tree" style="font-size: 24px; line-height: 1.85;">
+<pre style="margin:0; font-family: inherit;"><span class="star">/ingest</span>   <span style="color:var(--muted);">원문보존 + 위키 컴파일</span>
+<span class="star">/query</span>    <span style="color:var(--muted);">출처 인용 답변 (복리)</span>
+<span class="star">/lint</span>     <span style="color:var(--muted);">고아·끊긴링크·모순 검사</span>
+/status /inbox /reindex
+/refresh-context</pre>
+        </div>
+        <div style="font-size:21px; color:var(--ink-2); margin-top:18px; line-height:1.45;">검증 훅이 원문 verbatim 보존을 강제 — 요약 대체를 시스템이 차단.</div>
+      </div>
+    </div>
+    <div class="foot"><div></div><div>20 / 22</div></div>
+  </section>
+
+  <!-- ===== 21 Capstone flow (dark steps) ===== -->
+  <section data-label="21 Capstone Flow" class="slide dark" style="padding: 100px 120px;">
+    <div class="head">
+      <div class="section-tag" style="color: var(--accent-2);">CAPSTONE · 실습 흐름</div>
+      <div class="time" style="color: #a59c89;">LLMWiki 안에서 claude</div>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 32px;">
+      <div>
+        <div class="kicker" style="color: var(--accent-2); margin-bottom: 16px;">HOW TO RUN</div>
+        <h1 class="title serif" style="color: #fdf7e8; font-size: 70px; line-height: 1.12;">한 줄 주제 → 스스로 자라는 위키</h1>
+      </div>
+      <hr style="border: 0; border-top: 1px solid #3a3530; margin: 0; width: 160px;">
+      <div style="display: flex; flex-direction: column; gap: 20px; font-size: 34px; line-height: 1.35; color: #e8e2ce; font-family: 'Noto Serif KR'; font-weight: 500;">
+        <div><span class="mono" style="font-size: 24px; color: var(--accent-2); margin-right: 20px;">01</span><span class="mono" style="color:#fdf7e8;">cd LLMWiki && claude</span> — 볼트 전용 커맨드 활성화</div>
+        <div><span class="mono" style="font-size: 24px; color: var(--accent-2); margin-right: 20px;">02</span>Core Context 채우기 — "왜 수집하는가"(재활용 축)</div>
+        <div><span class="mono" style="font-size: 24px; color: var(--accent-2); margin-right: 20px;">03</span><span class="mono" style="color:#fdf7e8;">/ingest</span> → 원문 보존 + 위키 페이지 생성</div>
+        <div><span class="mono" style="font-size: 24px; color: var(--accent-2); margin-right: 20px;">04</span><span class="mono" style="color:#fdf7e8;">/query</span> → Obsidian 그래프뷰로 지식망 확인</div>
+      </div>
+    </div>
+    <div class="foot" style="color: #6f6659;">
+      <div class="mono" style="font-size: 20px; letter-spacing: 0.2em;">INBOX → RAW SOURCES → WIKI → COMPOUNDING</div>
+      <div>21 / 22</div>
+    </div>
+  </section>
+
+  <!-- ===== 22 Takeaway / Closing ===== -->
+  <section data-label="22 Take Away" class="slide paper">
+    <div class="head"><div class="section-tag">Take Away</div><div class="time">가져갈 것</div></div>
+    <div style="margin-top: 20px;">
+      <div class="kicker">한 줄로 남기면</div>
+      <h2 class="title" style="font-size: 64px;">세 가지</h2>
+    </div>
+    <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 34px; padding: 0 30px;">
+      <div style="display: flex; gap: 44px; align-items: center;">
+        <div style="flex-shrink: 0; width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; font-family: 'Noto Serif KR'; font-size: 66px; font-weight: 900;">1</div>
+        <div class="serif" style="font-size: 42px; line-height: 1.3; font-weight: 500;">도구는 <span class="hl2">위에서부터</span> — 공식 API → 검색 → 크롤링 → 브라우저.</div>
+      </div>
+      <div style="display: flex; gap: 44px; align-items: center;">
+        <div style="flex-shrink: 0; width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; font-family: 'Noto Serif KR'; font-size: 66px; font-weight: 900;">2</div>
+        <div class="serif" style="font-size: 42px; line-height: 1.3; font-weight: 500;">반복할 일은 <span class="hl">환경으로</span> — 하네스·Skill·MCP·검증 루프.</div>
+      </div>
+      <div style="display: flex; gap: 44px; align-items: center;">
+        <div style="flex-shrink: 0; width: 120px; height: 120px; border-radius: 50%; border: 3px solid var(--ink); display: flex; align-items: center; justify-content: center; font-family: 'Noto Serif KR'; font-size: 66px; font-weight: 900;">3</div>
+        <div class="serif" style="font-size: 42px; line-height: 1.3; font-weight: 500;">엮으면 <span class="hl2">스스로 자라는</span> 검증된 나만의 LLM Wiki.</div>
+      </div>
+    </div>
+    <div class="foot" style="padding-top: 26px; border-top: 2px solid var(--ink); align-items: center;">
+      <div class="mono" style="font-size: 22px; color: var(--ink-2);">Live: (배포 후 기입) &nbsp;·&nbsp; 키트·슬라이드는 배포 링크로 제공</div>
+      <div style="font-size: 24px; color: var(--ink-2);">박준 <span class="muted" style="margin-left: 8px;">/ JoonLab</span> &nbsp; 22 / 22</div>
+    </div>
+  </section>
+
+</deck-stage>
+
+<script src="deck-stage.js"></script>
+<script>
+  // Inject the deck logo into every slide at runtime.
+  // To change the logo, swap the file at assets/joonlab_logo.png (keep the name),
+  // or edit LOGO_SRC below. To hide the logo on a slide, add class="no-logo".
+  (function () {
+    const LOGO_SRC = 'assets/joonlab_logo.png';
+    const inject = () => {
+      document.querySelectorAll('section.slide').forEach(s => {
+        if (s.querySelector('.deck-logo')) return;
+        const img = document.createElement('img');
+        img.src = LOGO_SRC;
+        img.className = 'deck-logo';
+        img.alt = 'Logo';
+        s.appendChild(img);
+      });
+    };
+    if (document.readyState !== 'loading') inject();
+    else document.addEventListener('DOMContentLoaded', inject);
+  })();
+</script>
+</body>
+</html>
